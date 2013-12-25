@@ -92,15 +92,15 @@
 %slurm_with_opt sgijob
 %endif
 
-Name:    see META file
-Version: see META file
-Release: see META file
+Name:    slurm
+Version: 2.6.5
+Release: 1%{?dist}
 
 Summary: Simple Linux Utility for Resource Management
 
-License: GPL
+License: GPLv2
 Group: System Environment/Base
-Source: %{name}-%{version}-%{release}.tgz
+Source: slurm-2.6.5.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}
 URL: http://slurm.schedmd.com/
 
@@ -108,6 +108,7 @@ Requires: slurm-plugins
 
 %ifos linux
 BuildRequires: python
+BuildRequires: chrpath
 %endif
 
 %ifos solaris
@@ -406,7 +407,7 @@ Gives the ability for SLURM to use Berkeley Lab Checkpoint/Restart
 #############################################################################
 
 %prep
-%setup -n %{name}-%{version}-%{release}
+%setup -n slurm-2.6.5
 
 %build
 %configure \
@@ -427,9 +428,11 @@ Gives the ability for SLURM to use Berkeley Lab Checkpoint/Restart
 	%{?slurm_with_salloc_background:--enable-salloc-background} \
 	%{!?slurm_with_readline:--without-readline} \
 	%{?slurm_with_multiple_slurmd:--enable-multiple-slurmd} \
-	%{?with_cflags}
+	%{?with_cflags} \
+    --without-rpath
 
 make %{?_smp_mflags}
+
 
 %install
 rm -rf "$RPM_BUILD_ROOT"
@@ -437,6 +440,14 @@ mkdir -p "$RPM_BUILD_ROOT"
 DESTDIR="$RPM_BUILD_ROOT" make install
 DESTDIR="$RPM_BUILD_ROOT" make install-contrib
 
+chmod 755 $RPM_BUILD_ROOT%{_perldir}/auto/Slurm/Slurm.so
+chrpath --delete $RPM_BUILD_ROOT%{_perldir}/auto/Slurm/Slurm.so
+chmod 755 $RPM_BUILD_ROOT%{_perldir}/auto/Slurmdb/Slurmdb.so
+chrpath --delete $RPM_BUILD_ROOT%{_perldir}/auto/Slurmdb/Slurmdb.so
+chmod 755 $RPM_BUILD_ROOT%{_libdir}/libpmi.so.0.0.0
+chrpath --delete $RPM_BUILD_ROOT%{_libdir}/libpmi.so.0.0.0
+chmod 755 $RPM_BUILD_ROOT/%{_lib}/security/pam_slurm.so
+chrpath --delete $RPM_BUILD_ROOT/%{_lib}/security/pam_slurm.so
 %ifos aix5.3
    mv ${RPM_BUILD_ROOT}%{_bindir}/srun ${RPM_BUILD_ROOT}%{_sbindir}
 %else
@@ -456,7 +467,7 @@ DESTDIR="$RPM_BUILD_ROOT" make install-contrib
 
 install -D -m644 etc/slurm.conf.example ${RPM_BUILD_ROOT}%{_sysconfdir}/slurm.conf.example
 install -D -m644 etc/cgroup.conf.example ${RPM_BUILD_ROOT}%{_sysconfdir}/cgroup.conf.example
-install -D -m755 etc/cgroup_allowed_devices_file.conf.example ${RPM_BUILD_ROOT}%{_sysconfdir}/cgroup_allowed_devices_file.conf.example
+install -D -m644 etc/cgroup_allowed_devices_file.conf.example ${RPM_BUILD_ROOT}%{_sysconfdir}/cgroup_allowed_devices_file.conf.example
 install -D -m755 etc/cgroup.release_common.example ${RPM_BUILD_ROOT}%{_sysconfdir}/cgroup.release_common.example
 install -D -m755 etc/cgroup.release_common.example ${RPM_BUILD_ROOT}%{_sysconfdir}/cgroup/release_freezer
 install -D -m755 etc/cgroup.release_common.example ${RPM_BUILD_ROOT}%{_sysconfdir}/cgroup/release_cpuset
@@ -466,6 +477,14 @@ install -D -m755 etc/slurm.epilog.clean ${RPM_BUILD_ROOT}%{_sysconfdir}/slurm.ep
 install -D -m755 contribs/sjstat ${RPM_BUILD_ROOT}%{_bindir}/sjstat
 
 # Delete unpackaged files:
+
+#Back ported from master.
+test -s $RPM_BUILD_ROOT/%{_perldir}/auto/Slurm/Slurm.bs         ||
+rm   -f $RPM_BUILD_ROOT/%{_perldir}/auto/Slurm/Slurm.bs
+
+test -s $RPM_BUILD_ROOT/%{_perldir}/auto/Slurmdb/Slurmdb.bs     ||
+rm   -f $RPM_BUILD_ROOT/%{_perldir}/auto/Slurmdb/Slurmdb.bs
+
 rm -f $RPM_BUILD_ROOT/%{_libdir}/libpmi.a
 rm -f $RPM_BUILD_ROOT/%{_libdir}/libpmi2.a
 rm -f $RPM_BUILD_ROOT/%{_libdir}/libslurm.a
@@ -475,9 +494,10 @@ rm -f $RPM_BUILD_ROOT/%{_libdir}/security/*.{a,la}
 %if %{?with_pam_dir}0
 rm -f $RPM_BUILD_ROOT/%{with_pam_dir}/pam_slurm.{a,la}
 %endif
-rm -f $RPM_BUILD_ROOT/lib/security/pam_slurm.{a,la}
-rm -f $RPM_BUILD_ROOT/lib32/security/pam_slurm.{a,la}
-rm -f $RPM_BUILD_ROOT/lib64/security/pam_slurm.{a,la}
+rm -f $RPM_BUILD_ROOT/%{_lib}/security/pam_slurm.{a,la}
+#TODO DELETE
+#rm -f $RPM_BUILD_ROOT/lib32/security/pam_slurm.{a,la}
+#rm -f $RPM_BUILD_ROOT/lib64/security/pam_slurm.{a,la}
 %if ! %{slurm_with auth_none}
 rm -f $RPM_BUILD_ROOT/%{_libdir}/slurm/auth_none.so
 %endif
@@ -616,12 +636,13 @@ touch $LIST
     test -f $RPM_BUILD_ROOT/%{with_pam_dir}/pam_slurm.so	&&
 	echo %{with_pam_dir}/pam_slurm.so	>>$LIST
 %else
-    test -f $RPM_BUILD_ROOT/lib/security/pam_slurm.so		&&
-	echo /lib/security/pam_slurm.so		>>$LIST
-    test -f $RPM_BUILD_ROOT/lib32/security/pam_slurm.so		&&
-	echo /lib32/security/pam_slurm.so	>>$LIST
-    test -f $RPM_BUILD_ROOT/lib64/security/pam_slurm.so		&&
-	echo /lib64/security/pam_slurm.so	>>$LIST
+    test -f $RPM_BUILD_ROOT/%{_lib}/security/pam_slurm.so		&&
+	echo /%{_lib}/security/pam_slurm.so		>>$LIST
+    #TODO ME
+    #test -f $RPM_BUILD_ROOT/lib32/security/pam_slurm.so		&&
+	#echo /lib32/security/pam_slurm.so	>>$LIST
+    #test -f $RPM_BUILD_ROOT/lib64/security/pam_slurm.so		&&
+	#echo /lib64/security/pam_slurm.so	>>$LIST
 %endif
 #############################################################################
 
@@ -734,10 +755,8 @@ rm -rf $RPM_BUILD_ROOT
 %{_perldir}/Slurm/Hostlist.pm
 %{_perldir}/Slurm/Stepctx.pm
 %{_perldir}/auto/Slurm/Slurm.so
-%{_perldir}/auto/Slurm/Slurm.bs
 %{_perldir}/Slurmdb.pm
 %{_perldir}/auto/Slurmdb/Slurmdb.so
-%{_perldir}/auto/Slurmdb/Slurmdb.bs
 %{_perldir}/auto/Slurmdb/autosplit.ix
 %{_perlman3dir}/Slurm*
 
